@@ -45,7 +45,7 @@ public class KafkaProducerService : BackgroundService
 
 			var messages = Enumerable
 				.Range(counter, batchSize)
-				.Select(i => $"Message // {counter} #{i} at {DateTime.UtcNow:O}");
+				.Select(i => $"Message #{i} at {DateTime.UtcNow:O}");
 
 			counter += batchSize;
 
@@ -88,7 +88,7 @@ public class KafkaProducerService : BackgroundService
 	private static TopicSpecificationParameters GetTopicSpecificationParameters()
 	{
 		return new TopicSpecificationParameters(
-			numPartitions: 1,
+			numPartitions: 3,
 			replicationFactor: 3,
 			configs: new Dictionary<string, string> { ["min.insync.replicas"] = "2" });
 	}

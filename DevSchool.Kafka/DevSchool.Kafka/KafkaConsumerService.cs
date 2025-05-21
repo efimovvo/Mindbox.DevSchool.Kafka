@@ -1,46 +1,42 @@
-using Confluent.Kafka;
+using Mindbox.Kafka;
+using Mindbox.Kafka.Abstractions;
 
 namespace DevSchool.Kafka;
 
 public class KafkaConsumerService : BackgroundService
 {
-	private readonly ILogger<KafkaConsumerService> _logger;
-	private readonly IConsumer<string, string> _consumer;
+	private readonly IAsyncConsumerHostFactory _consumerHostFactory;
+	private readonly IAsyncConsumerMessageProcessor<string> _messageProcessor;
 
-	public KafkaConsumerService(ILogger<KafkaConsumerService> logger, ConsumerConfig config)
+	private readonly AsyncConsumerHostSettings _consumerHostSettings = new()
 	{
-		_logger = logger;
-		_consumer = new ConsumerBuilder<string, string>(config).Build();
-		_consumer.Subscribe("demo-topic");
+		InternalChannelSize = 20,
+		CommitLogSize = 1,
+		WorkerTaskCount = 1,
+		CommitterDelay = TimeSpan.FromMilliseconds(1000),
+		SessionTimeoutMs = 9_000
+	};
+
+	public KafkaConsumerService(
+		IAsyncConsumerHostFactory consumerHostFactory,
+		IAsyncConsumerMessageProcessor<string> messageProcessor)
+	{
+		_consumerHostFactory = consumerHostFactory;
+		_messageProcessor = messageProcessor;
 	}
 
-	protected override Task ExecuteAsync(CancellationToken stoppingToken)
+	protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 	{
-		return Task.Run(() =>
-		{
-			while (!stoppingToken.IsCancellationRequested)
-			{
-				try
-				{
-					var result = _consumer.Consume(stoppingToken);
-					_logger.LogInformation("Consumed: {Message}", result.Message.Value);
-				}
-				catch (OperationCanceledException)
-				{
-					break;
-				}
-				catch (Exception ex)
-				{
-					_logger.LogError(ex, "Error while consuming message");
-				}
-			}
-		}, stoppingToken);
-	}
+		var host = _consumerHostFactory.CreateHost(
+			new Topic(
+				() => "demo-topic",
+				() => "localhost:29091,localhost:29092,localhost:29093",
+				OffsetLossHandling.RedeliverHistoricalData),
+			"demo-consumer-group",
+			ConsumerFactories.CommonConsumerBuilderFactory(),
+			_messageProcessor,
+			_consumerHostSettings);
 
-	public override void Dispose()
-	{
-		_consumer.Close();
-		_consumer.Dispose();
-		base.Dispose();
+		await host.RunAsync(stoppingToken);
 	}
 }
