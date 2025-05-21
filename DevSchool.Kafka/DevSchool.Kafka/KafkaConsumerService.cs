@@ -5,12 +5,12 @@ namespace DevSchool.Kafka;
 public class KafkaConsumerService : BackgroundService
 {
 	private readonly ILogger<KafkaConsumerService> _logger;
-	private readonly IConsumer<Null, string> _consumer;
+	private readonly IConsumer<string, string> _consumer;
 
 	public KafkaConsumerService(ILogger<KafkaConsumerService> logger, ConsumerConfig config)
 	{
 		_logger = logger;
-		_consumer = new ConsumerBuilder<Null, string>(config).Build();
+		_consumer = new ConsumerBuilder<string, string>(config).Build();
 		_consumer.Subscribe("demo-topic");
 	}
 
