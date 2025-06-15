@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Confluent.Kafka;
 using Mindbox.Kafka;
 using Mindbox.Kafka.Abstractions;
@@ -30,7 +31,8 @@ public class KafkaProducerService : BackgroundService
 				CompressionType = CompressionType.Gzip
 			},
 			enableIdempotence: false,
-			delayBeforeReproduce: TimeSpan.FromMilliseconds(1200));
+			delayBeforeReproduce: TimeSpan.FromMilliseconds(1200)
+		);
 
 		_logger = logger;
 	}
@@ -51,11 +53,11 @@ public class KafkaProducerService : BackgroundService
 
 			var options = new ParallelOptions
 			{
-				MaxDegreeOfParallelism = 20,
+				MaxDegreeOfParallelism = 100,
 				CancellationToken = stoppingToken
 			};
 
-			await Parallel.ForEachAsync(
+            await Parallel.ForEachAsync(
 				messages,
 				options,
 				async (message, token) =>
@@ -66,7 +68,6 @@ public class KafkaProducerService : BackgroundService
 						"localhost:29091,localhost:29092,localhost:29093",
 						"demo-topic",
 						message,
-						key: "some-key",
 						token: token);
 				});
 
@@ -90,7 +91,8 @@ public class KafkaProducerService : BackgroundService
 		return new TopicSpecificationParameters(
 			numPartitions: 3,
 			replicationFactor: 3,
-			configs: new Dictionary<string, string> { ["min.insync.replicas"] = "2" });
+			configs: new Dictionary<string, string> { ["min.insync.replicas"] = "2" }
+		);
 	}
 }
 

@@ -3,38 +3,30 @@ using Mindbox.Kafka.Abstractions;
 
 namespace DevSchool.Kafka;
 
-public class KafkaConsumerService : BackgroundService
+public class KafkaConsumerService(
+    IAsyncConsumerHostFactory consumerHostFactory,
+    IAsyncConsumerMessageProcessor<string> messageProcessor
+) : BackgroundService
 {
-	private readonly IAsyncConsumerHostFactory _consumerHostFactory;
-	private readonly IAsyncConsumerMessageProcessor<string> _messageProcessor;
-
 	private readonly AsyncConsumerHostSettings _consumerHostSettings = new()
 	{
-		InternalChannelSize = 20,
-		CommitLogSize = 1,
-		WorkerTaskCount = 1,
-		CommitterDelay = TimeSpan.FromMilliseconds(1000),
+		InternalChannelSize = 100,
+		CommitLogSize = 100,
+		WorkerTaskCount = 100,
+		CommitterDelay = TimeSpan.FromMilliseconds(1),
 		SessionTimeoutMs = 9_000
 	};
 
-	public KafkaConsumerService(
-		IAsyncConsumerHostFactory consumerHostFactory,
-		IAsyncConsumerMessageProcessor<string> messageProcessor)
-	{
-		_consumerHostFactory = consumerHostFactory;
-		_messageProcessor = messageProcessor;
-	}
-
 	protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 	{
-		var host = _consumerHostFactory.CreateHost(
+		var host = consumerHostFactory.CreateHost(
 			new Topic(
 				() => "demo-topic",
 				() => "localhost:29091,localhost:29092,localhost:29093",
 				OffsetLossHandling.RedeliverHistoricalData),
 			"demo-consumer-group",
 			ConsumerFactories.CommonConsumerBuilderFactory(),
-			_messageProcessor,
+			messageProcessor,
 			_consumerHostSettings);
 
 		await host.RunAsync(stoppingToken);
