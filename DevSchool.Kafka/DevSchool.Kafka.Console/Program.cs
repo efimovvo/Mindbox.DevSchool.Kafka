@@ -1,163 +1,72 @@
-﻿using Confluent.Kafka;
+using Confluent.Kafka;
 using Confluent.Kafka.Admin;
 
 const string bootstrapServers = "localhost:29091,localhost:29092,localhost:29093";
-const string topicName = "new-topic";
-const int numPartitions = 3;
-const int replicationFactor = 3;
+const string topicName = "demo-topic";
 
-var config = new AdminClientConfig
+using var adminClient = new AdminClientBuilder(new AdminClientConfig { BootstrapServers = bootstrapServers }).Build();
+
+
+// Получить сообщение с офсетом 15
+var config1 = new ConsumerConfig
 {
-	BootstrapServers = bootstrapServers
+    BootstrapServers = bootstrapServers,
+    GroupId = "consumer-group",
+    AutoOffsetReset = AutoOffsetReset.Earliest
 };
 
-using var adminClient = new AdminClientBuilder(config).Build();
+const int patition = 0;
+const long offset = 15;
 
-await adminClient.CreateTopicsAsync(
-[
-	new TopicSpecification
-	{
-		Name = topicName,
-		NumPartitions = numPartitions,
-		ReplicationFactor = replicationFactor,
-		// Попробуй продьюсить в топик без min.insync.replicas
-		// А потом в топик min.insync.replicas = 2 and 3
-		// Во всех случаях отрубай 0, 1 или 2 брокера -- посмотри, что получится
-		Configs = new Dictionary<string, string> { ["min.insync.replicas"] = "2" }
-	}
-]);
+using var consumer1 = new ConsumerBuilder<Ignore, string>(config1).Build();
 
-Console.WriteLine($"Топик '{topicName}' успешно создан.");
+var topicPartition = new TopicPartition(topicName, patition);
+consumer1.Assign(new[] { topicPartition });
+consumer1.Consume();
 
-// Попробуй увеличить число партиций
-/*await adminClient.CreatePartitionsAsync(
-	[
-		new PartitionsSpecification
-		{
-			Topic = topicName,
-			IncreaseTo = 5
-		}
-	]);*/
+consumer1.Seek(new TopicPartitionOffset(topicPartition, offset));
 
-// Попробуй удалить топик
-//await adminClient.DeleteTopicsAsync([topicName]);
+var message1 = consumer1.Consume();
 
-var producerConfig = new ProducerConfig
+if (message1 != null)
+    Console.WriteLine($"{message1.Message.Value}");
+
+
+// Переместить оффсет на 10 и прочитать заново
+var config2 = new ConsumerConfig
 {
-	BootstrapServers = bootstrapServers,
-	MessageTimeoutMs = 2000,
-	RetryBackoffMs = 300,
-	Acks = Acks.All
+    BootstrapServers = bootstrapServers,
+    GroupId = "consumer-group",
+    AutoOffsetReset = AutoOffsetReset.Earliest,
+    EnableAutoCommit = false
 };
 
-using var producer = new ProducerBuilder<string, string>(producerConfig).Build();
+var metadata = adminClient.GetMetadata(topicName, TimeSpan.FromSeconds(10));
+var partitions = metadata.Topics[0].Partitions;
 
-var result = await producer.ProduceAsync(topicName, new Message<string, string>
+var topicPartitionOffsets = new List<TopicPartitionOffset>();
+
+foreach (var partition in partitions)
+    topicPartitionOffsets.Add(new TopicPartitionOffset(new TopicPartition(topicName, partition.PartitionId), new Offset(10)));
+
+var groupPartitionOffsets = new List<ConsumerGroupTopicPartitionOffsets>
 {
-	// Попробуй продьюсить без ключа несколько раз -- убедись, что будут попадать сообщения в разные партиции
-	// Попробуй с ключем MyKey2 -- убедись, что всегда в одну, потом с ключем MyKey -- убедись, что в другую
-	// Key = "MyKey2",
-	Value = "Hello, Kafka!"
-});
-
-Console.WriteLine($"Сообщение отправлено в {result.TopicPartitionOffset}");
-
-// Попробуй прочитать сообщения из кафки
-/*const string groupId = "my-consumer-group";
-
-var config = new ConsumerConfig
-{
-	BootstrapServers = bootstrapServers,
-	GroupId = groupId,
-	// Убедись, что если ты топик еще не читал и подключишься на чтение с AutoOffsetReset.Latest,
-	// то будешь ждать нового сообщения, а если с AutoOffsetReset.Earliest, то вычитаешь все существующие сначала
-	AutoOffsetReset = AutoOffsetReset.Earliest,
-	EnableAutoCommit = true
+    new ConsumerGroupTopicPartitionOffsets(
+        config2.GroupId,
+        topicPartitionOffsets
+    )
 };
 
-using var consumer = new ConsumerBuilder<Ignore, string>(config).Build();
+await adminClient.AlterConsumerGroupOffsetsAsync(groupPartitionOffsets);
 
-consumer.Subscribe(topicName);
+using var consumer2 = new ConsumerBuilder<Ignore, string>(config2).Build();
 
-try
+consumer2.Subscribe(topicName);
+
+while (true)
 {
-	while (true)
-	{
-		var cr = consumer.Consume();
-		Console.WriteLine($"Получено сообщение: '{cr.Message.Value}' из {cr.TopicPartitionOffset}");
-	}
+    var message2 = consumer2.Consume(TimeSpan.FromSeconds(1));
+
+    if (message2 != null && message2.Offset > 10)
+        Console.WriteLine($"Partition: {message2.Partition}, Offset: {message2.Offset}, Value: {message2.Message.Value}");
 }
-catch (OperationCanceledException)
-{
-	consumer.Close();
-}*/
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*var producerConfig = new ProducerConfig
-{
-	BootstrapServers = bootstrapServers,
-	MessageTimeoutMs = 2000,
-	RetryBackoffMs = 300
-};
-
-using var producer = new ProducerBuilder<Null, string>(producerConfig).Build();
-
-var result = await producer.ProduceAsync(topicName, new Message<Null, string>
-{
-//	Key = "MyKey2",
-	Value = "Hello, Kafka!"
-});
-
-Console.WriteLine($"Сообщение отправлено в {result.TopicPartitionOffset}");*/
-
-/*const string groupId = "my-consumer-group";
-
-var config = new ConsumerConfig
-{
-	BootstrapServers = bootstrapServers,
-	GroupId = groupId,
-	AutoOffsetReset = AutoOffsetReset.Earliest, // читать с начала, если нет коммита
-	EnableAutoCommit = true
-};
-
-using var consumer = new ConsumerBuilder<Ignore, string>(config).Build();
-
-consumer.Subscribe(topicName);
-
-Console.WriteLine($"Ожидание сообщений из топика '{topicName}'...");
-
-try
-{
-	while (true)
-	{
-		var cr = consumer.Consume();
-		Console.WriteLine($"Получено сообщение: '{cr.Message.Value}' из {cr.TopicPartitionOffset}");
-	}
-}
-catch (OperationCanceledException)
-{
-	// Корректно завершить
-	consumer.Close();
-}*/

@@ -1,4 +1,4 @@
-﻿using Confluent.Kafka;
+using Confluent.Kafka;
 using DevSchool.Kafka;
 using Mindbox.Kafka;
 using Mindbox.Kafka.Abstractions;
